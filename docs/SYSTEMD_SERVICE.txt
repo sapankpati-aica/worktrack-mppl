@@ -1,0 +1,16 @@
+# /etc/systemd/system/worktrack.service
+[Unit]
+Description=WorkTrack Production Flask App
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/worktrack-mppl
+ExecStart=/home/ubuntu/worktrack-mppl/venv/bin/python /home/ubuntu/worktrack-mppl/app.py
+Restart=always
+RestartSec=5
+Environment=PORT=5000
+
+[Install]
+WantedBy=multi-user.target
+
