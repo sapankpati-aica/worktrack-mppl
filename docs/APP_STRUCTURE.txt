@@ -1,0 +1,15 @@
+65:def h(x): return html.escape(str(x if x is not None else ''))
+66:def pw(p): return hashlib.sha256(p.encode()).hexdigest()
+67:def db():
+69:def q(sql, args=(), one=False):
+72:def ex(sql, args=()):
+76:def now_in_slot(start: str, end: str) -> bool:
+89:def init_db():
+194:def ensure_user_columns():
+205:def ensure_slots(user_id: int, slot_date: str):
+250:def sync_master_data():
+281:def nav_icon(name: str) -> str:
+482:def layout(user, title, body, actions='', subtitle='', active=''):
+530:def opts(vals, selected=''):
+533:def optrows(rows, selected='', show_role=True):
+546:class App(BaseHTTPRequestHandler):

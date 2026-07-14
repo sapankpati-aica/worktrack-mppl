@@ -1,0 +1,27 @@
+583:        path = urlparse(self.path).path
+584:        if path == '/login': return self.login()
+585:        if path == '/logout':
+589:        if path == '/change-password':
+606:        if path.startswith('/employee-progress/') and path.split('/')[-1].isdigit():
+608:        if path.startswith('/tasks/') and path.split('/')[-1].isdigit():
+614:        path = urlparse(self.path).path
+615:        if path == '/login': return self.post_login()
+618:        if path == '/change-password': return self.post_change_password(u)
+621:        if path == '/tasks/new':      return self.post_task(u)
+622:        if path.startswith('/tasks/') and path.endswith('/update'): return self.post_update(u, int(path.split('/')[2]))
+623:        if path.startswith('/tasks/') and path.endswith('/review'): return self.post_review(u, int(path.split('/')[2]))
+624:        if path == '/daily':          return self.post_daily(u)
+625:        if path == '/employees/new':  return self.post_employee(u)
+626:        if path == '/employees/import': return self.post_employee_import(u)
+627:        if path.startswith('/employees/') and path.endswith('/update'):
+629:        if path.startswith('/employees/') and path.endswith('/delete'):
+631:        if path == '/entities/new':    return self.post_entity(u)
+632:        if path == '/compliance':     return self.post_compliance(u)
+633:        if path.startswith('/compliance/') and path.endswith('/complete'):
+635:        if path == '/myday':          return self.post_myday(u)
+636:        if path.startswith('/myday/quick/') and path.endswith('/done'):
+893:        qs = parse_qs(urlparse(self.path).query)
+1026:        qs = parse_qs(urlparse(self.path).query)
+1210:        qs = parse_qs(urlparse(self.path).query)
+1693:        qs = parse_qs(urlparse(self.path).query)
+1789:        qs = parse_qs(urlparse(self.path).query)
