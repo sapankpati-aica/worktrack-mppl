@@ -3,3 +3,16 @@ uploads/
 __pycache__/
 *.pyc
 .env
+venv/
+*.bak
+*.db-journal
+*.db-shm
+*.db-wal
+app*.bak*
+app_*backup*.py
+app_BEFORE_*.py
+app_BROKEN_*.py
+app_SAFE_*.py
+worktrack_*backup*.db
+worktrack_BEFORE_*.db
+*backup*.py

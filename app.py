@@ -93,7 +93,8 @@ def init_db():
     CREATE TABLE IF NOT EXISTS users(
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT UNIQUE,
         password_hash TEXT, role TEXT, department TEXT, designation TEXT,
-        reporting_manager_id INTEGER, skill_area TEXT, status TEXT DEFAULT 'Active');
+        reporting_manager_id INTEGER, skill_area TEXT, status TEXT DEFAULT 'Active',
+        must_change_password INTEGER DEFAULT 0, password_changed_at TEXT);
 
     CREATE TABLE IF NOT EXISTS entities(
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, entity_type TEXT,
@@ -186,7 +187,19 @@ def init_db():
         c.executemany('INSERT INTO compliance_reminders(entity_id,compliance_type,financial_year,due_date,frequency,responsible_user_id,reviewer_id,priority,escalation_user_id,status) VALUES (?,?,?,?,?,?,?,?,?,?)', rem)
 
     con.commit(); con.close()
+    ensure_user_columns()
     sync_master_data()
+
+
+def ensure_user_columns():
+    """Add password-change tracking columns to an older worktrack.db that predates them."""
+    con = db(); c = con.cursor()
+    cols = {r['name'] for r in c.execute('PRAGMA table_info(users)').fetchall()}
+    if 'must_change_password' not in cols:
+        c.execute('ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0')
+    if 'password_changed_at' not in cols:
+        c.execute('ALTER TABLE users ADD COLUMN password_changed_at TEXT')
+    con.commit(); con.close()
 
 
 def ensure_slots(user_id: int, slot_date: str):
@@ -573,6 +586,10 @@ class App(BaseHTTPRequestHandler):
             return self.redirect('/login', 'sid=; Max-Age=0; Path=/')
         u = self.require()
         if not u: return
+        if path == '/change-password':
+            return self.change_password_page(u)
+        if u['must_change_password']:
+            return self.redirect('/change-password')
         routes = {
             '/':            self.dashboard,
             '/myday':       self.myday,
@@ -598,6 +615,9 @@ class App(BaseHTTPRequestHandler):
         if path == '/login': return self.post_login()
         u = self.require()
         if not u: return
+        if path == '/change-password': return self.post_change_password(u)
+        if u['must_change_password']:
+            return self.redirect('/change-password')
         if path == '/tasks/new':      return self.post_task(u)
         if path.startswith('/tasks/') and path.endswith('/update'): return self.post_update(u, int(path.split('/')[2]))
         if path.startswith('/tasks/') and path.endswith('/review'): return self.post_review(u, int(path.split('/')[2]))
@@ -626,13 +646,22 @@ class App(BaseHTTPRequestHandler):
   <div class="brandrow">{LOGO_SVG}<div class="name">Work<span class="accent">Track</span></div></div>
   <div class="subtitle">MPPL Office · Tasks &amp; Compliances</div>
   <label>Email</label>
-  <input name="email" value="admin@office.local" autofocus>
+  <input name="email" autofocus>
   <label>Password</label>
-  <input name="password" type="password" value="admin123">
+  <input name="password" type="password">
   <br><br>
   <button class="btn primary" style="width:100%;justify-content:center;padding:12px">Sign in</button>
-  <p style="color:#64748b;font-size:12px;margin-top:18px;text-align:center">
-    Demo: admin@office.local / admin123 &nbsp;·&nbsp; also: savitha/rabiya/deepak/murali/radha@office.local
+
+  <p style="margin-top:18px;text-align:center">
+    <a href="#" onclick="alert('For password reset or any technical assistance,\\n\\nPlease contact Sapan Pati (System Administrator).'); return false;"
+       style="color:#2563eb;font-size:13px;text-decoration:underline;font-weight:600;">
+       Forgot Password?
+    </a>
+  </p>
+
+  <p style="color:#64748b;font-size:12px;text-align:center;margin-top:8px">
+    Please contact <b>Sapan Pati (System Administrator)</b><br>
+    for any technical support.
   </p>
 </form></body></html>''')
 
@@ -642,8 +671,48 @@ class App(BaseHTTPRequestHandler):
                  (f.get('email', '').lower().strip(),), True)
         if user and user['password_hash'] == pw(f.get('password', '')):
             sid = secrets.token_urlsafe(24); SESSIONS[sid] = user['id']
-            return self.redirect('/', f'sid={sid}; Path=/; HttpOnly; SameSite=Lax')
+            cookie = f'sid={sid}; Path=/; HttpOnly; SameSite=Lax'
+            if user['must_change_password']:
+                return self.redirect('/change-password', cookie)
+            return self.redirect('/', cookie)
         return self.redirect('/login')
+
+    # ── Change Password (first-login enforcement) ────────────────────────────
+    def change_password_page(self, u, error=''):
+        err_html = f'<p style="color:#dc2626;font-size:13px;margin-top:14px">{h(error)}</p>' if error else ''
+        return self.send(f'''<!doctype html><html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Change Password · WorkTrack</title>{CSS}</head>
+<body class="login"><form method="post" action="/change-password">
+  <div class="brandrow">{LOGO_SVG}<div class="name">Work<span class="accent">Track</span></div></div>
+  <div class="subtitle">For security, please set a new password before continuing.</div>
+  <label>Current Password</label>
+  <input name="current_password" type="password" autofocus>
+  <label>New Password</label>
+  <input name="new_password" type="password">
+  <label>Confirm New Password</label>
+  <input name="confirm_password" type="password">
+  {err_html}
+  <br><br>
+  <button class="btn primary" style="width:100%;justify-content:center;padding:12px">Change Password</button>
+</form></body></html>''')
+
+    def post_change_password(self, u):
+        f = self.body()
+        current = f.get('current_password', '')
+        new = f.get('new_password', '')
+        confirm = f.get('confirm_password', '')
+        if pw(current) != u['password_hash']:
+            return self.change_password_page(u, 'Current password is incorrect.')
+        if new != confirm:
+            return self.change_password_page(u, 'New passwords do not match.')
+        if len(new) < 8:
+            return self.change_password_page(u, 'New password must be at least 8 characters long.')
+        if pw(new) == u['password_hash']:
+            return self.change_password_page(u, 'New password cannot be the same as the current password.')
+        ex('UPDATE users SET password_hash=?, must_change_password=0, password_changed_at=? WHERE id=?',
+           (pw(new), datetime.now().isoformat(timespec='seconds'), u['id']))
+        return self.redirect('/')
 
     # ── Dashboard ──────────────────────────────────────────────────────────
     def dashboard(self, u):
@@ -1421,8 +1490,8 @@ class App(BaseHTTPRequestHandler):
             return self.redirect('/masters')
         password = f.get('password') or 'welcome123'
         try:
-            ex('''INSERT INTO users(name,email,password_hash,role,department,designation,reporting_manager_id,skill_area,status)
-                  VALUES (?,?,?,?,?,?,?,?,?)''',
+            ex('''INSERT INTO users(name,email,password_hash,role,department,designation,reporting_manager_id,skill_area,status,must_change_password)
+                  VALUES (?,?,?,?,?,?,?,?,?,1)''',
                (f.get('name'), email, pw(password), f.get('role') or 'Assignee',
                 f.get('department'), f.get('designation'), f.get('reporting_manager_id') or None,
                 f.get('skill_area'), 'Active'))
@@ -1605,7 +1674,7 @@ class App(BaseHTTPRequestHandler):
                         ex('UPDATE users SET password_hash=? WHERE id=?', (pw(password), existing['id']))
                     updated += 1
                 else:
-                    ex("""INSERT INTO users(name,email,password_hash,role,department,designation,reporting_manager_id,skill_area,status) VALUES (?,?,?,?,?,?,?,?,?)""", (name, email, pw(password), role, clean.get('department'), clean.get('designation'), mgr['id'] if mgr else None, clean.get('skill_area'), status))
+                    ex("""INSERT INTO users(name,email,password_hash,role,department,designation,reporting_manager_id,skill_area,status,must_change_password) VALUES (?,?,?,?,?,?,?,?,?,1)""", (name, email, pw(password), role, clean.get('department'), clean.get('designation'), mgr['id'] if mgr else None, clean.get('skill_area'), status))
                     imported += 1
             return self.redirect(f'/masters?imported={imported}&updated={updated}&skipped={skipped}')
         except Exception as e:
@@ -1689,7 +1758,7 @@ class App(BaseHTTPRequestHandler):
               <h2>Create Employee Login</h2>
               <form method="post" action="/employees/new" class="form">
                 <div><label>Employee Name</label><input name="name" required placeholder="e.g. Kiran"></div>
-                <div><label>Email / Login ID</label><input name="email" type="email" required placeholder="name@office.local"></div>
+                <div><label>Email / Login ID</label><input name="email" autofocus></div>
                 <div><label>Password</label><input name="password" value="welcome123"></div>
                 <div><label>Role Category</label><select name="role">{opts(ROLE_OPTIONS, 'Assignee')}</select></div>
                 <div><label>Department</label><input name="department" placeholder="Accounts / Admin / Compliance"></div>
