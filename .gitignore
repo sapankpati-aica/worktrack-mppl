@@ -16,3 +16,4 @@ app_SAFE_*.py
 worktrack_*backup*.db
 worktrack_BEFORE_*.db
 *backup*.py
+app.py_before_forgot_password_backup
